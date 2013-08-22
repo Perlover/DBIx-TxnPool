@@ -5,6 +5,44 @@ use warnings;
 
 our $VERSION = 0.01;
 
+sub new {
+    my ( $class, %args ) = @_;
+
+    bless { size => $args{size} || 100, dbh => $args{dbh} }, ref $class || $class;
+}
+
+sub txn_item (&@) {
+    my ( $callback, @args ) = @_;
+
+    my ( $post_callback );
+
+    if ( ref $args[0] eq 'HASH' ) {
+	$post_callback = $args[0]->{post_callback};
+	@args = @{ $args[0]->{args} };
+	shift @args;
+    }
+
+    __PACKAGE__->new( @args );
+}
+
+sub txn_post_item (&@) {
+    my ( $callback, @args ) = @_;
+
+    return { post_callback => $callback, args => [ @args ] }
+}
+
+sub add {
+    my ( $self, $data ) = @_;
+
+    # TODO
+}
+
+sub finish {
+    my $self = shift;
+
+    # TODO
+}
+
 1;
 
 __END__
