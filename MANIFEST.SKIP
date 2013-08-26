@@ -1,0 +1,4 @@
+\.komodoproject$
+\.git.*
+^Makefile.old
+^Makefile
