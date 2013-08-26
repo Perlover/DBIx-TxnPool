@@ -9,6 +9,7 @@ abstract 'The pool for making SQL insert/delete/updates more quickly by transact
 author 'Perlover <perlover@perlover.com>';
 version_from 'lib/DBIx/TxnPool.pm';
 auto_set_repository;
+author_tests('xt');
 license 'perl';
 
 WriteAll();

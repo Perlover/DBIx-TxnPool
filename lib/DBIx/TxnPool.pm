@@ -55,6 +55,8 @@ DBIx::TxnPool - The easy pool for making SQL insert/delete/updates statements mo
 
 =head1 SYNOPSIS
 
+    use DBIx::TxnPool;
+
     my $pool = txn_item {
 	# $_ consists the one item
 	# code has dbh & sth handle statements
