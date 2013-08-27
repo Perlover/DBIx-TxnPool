@@ -3,12 +3,22 @@ package DBIx::TxnPool;
 use strict;
 use warnings;
 
+use Try::Tiny;
+
 our $VERSION = 0.01;
 
 sub new {
     my ( $class, %args ) = @_;
 
-    bless { size => $args{size} || 100, dbh => $args{dbh} }, ref $class || $class;
+    my $self = bless {
+	size		=> $args{size} || 100,
+	dbh		=> $args{dbh} || die( __PACKAGE__ . ": the dbh should be defined" ),
+	max_repeat	=> $args{max_repeat} || 3,
+    }, ref $class || $class;
+
+    $self->{pool} = [];
+
+    $self;
 }
 
 sub txn_item (&@) {
@@ -17,12 +27,12 @@ sub txn_item (&@) {
     my ( $post_callback );
 
     if ( ref $args[0] eq 'HASH' ) {
+	# If there is txn_post_item after txn_item
 	$post_callback = $args[0]->{post_callback};
 	@args = @{ $args[0]->{args} };
-	shift @args;
     }
 
-    __PACKAGE__->new( @args );
+    __PACKAGE__->new( @args, item_callback => $callback, post_item_callback => $post_callback );
 }
 
 sub txn_post_item (&@) {
@@ -34,13 +44,66 @@ sub txn_post_item (&@) {
 sub add {
     my ( $self, $data ) = @_;
 
-    # TODO
+    try {
+	push @{ $self->{pool} }, $data;
+
+	if ( ! $self->{in_txn} ) {
+	    $self->{dbh}->begin_work;
+	    $self->{in_txn} = 1;
+	}
+
+	local $_ = $data;
+	$self->{item_callback}->( $data );
+    }
+    catch {
+	$self->{dbh}->rollback;
+	$self->{in_txn} = undef;
+
+	/deadlock/io ? $self->repeat_again : die( __PACKAGE__ . ": error in item callback ($_)" );
+    };
+
+    $self->finish
+      if ( @{ $self->{pool} } >= $self->{size} );
+}
+
+sub repeat_again {
+    my $self = shift;
+
+    $self->{dbh}->begin_work;
+
+    try {
+	foreach my $data ( @{ $self->{pool} } ) {
+	    local $_ = $data;
+	    $self->{item_callback}->( $data );
+	}
+    }
+    catch {
+	$self->{dbh}->rollback;
+
+	/deadlock/io
+	?
+	    ( ++$self->{repeated} >= $self->{max_repeat} ? die( __PACKAGE__ . ": limit of deadlock resolvings" ) : $self->repeat_again )
+	:
+	    die( __PACKAGE__ . ": error in item callback ($_)" );
+    };
 }
 
 sub finish {
     my $self = shift;
 
-    # TODO
+    if ( $self->{in_txn} ) {
+	$self->{dbh}->commit;
+	$self->{in_txn} = undef;
+    }
+
+    if ( $self->{post_item_callback} ) {
+	foreach my $data ( @{ $self->{pool} } ) {
+	    local $_ = $data;
+	    $self->{post_item_callback}->( $data );
+	}
+    }
+
+    $self->{pool} = [];
 }
 
 1;
@@ -171,7 +234,7 @@ itself.
 
 =over
 
-=item This module :)
+=item To add doc for max_repeat
 
 =item A supporting DBIx::Connector object instead DBI
 
