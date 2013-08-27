@@ -2,3 +2,5 @@
 \.git.*
 ^Makefile.old
 ^Makefile
+^blib(/|$)
+^pm_to_blib$

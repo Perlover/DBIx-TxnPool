@@ -11,7 +11,7 @@ sub dbi_connect {
 	{
 	    RaiseError	=> 1,
 	    AutoCommit	=> 1,
-	    PrintError	=> 1
+	    PrintError	=> 0,
 	}
     );
 }

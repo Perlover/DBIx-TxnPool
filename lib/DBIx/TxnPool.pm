@@ -2,21 +2,24 @@ package DBIx::TxnPool;
 
 use strict;
 use warnings;
+use Exporter 5.57 qw( import );
 
 use Try::Tiny;
 
 our $VERSION = 0.01;
+our @EXPORT = qw( txn_item txn_post_item );
 
 sub new {
     my ( $class, %args ) = @_;
 
     my $self = bless {
-	size		=> $args{size} || 100,
-	dbh		=> $args{dbh} || die( __PACKAGE__ . ": the dbh should be defined" ),
-	max_repeat	=> $args{max_repeat} || 3,
+	size			=> $args{size} || 100,
+	dbh			=> $args{dbh} || die( __PACKAGE__ . ": the dbh should be defined" ),
+	max_repeated_deadlocks	=> $args{max_repeated_deadlocks} || 5,
     }, ref $class || $class;
 
     $self->{pool} = [];
+    $self->{amount_deadlocks} = 0;
 
     $self;
 }
@@ -32,7 +35,11 @@ sub txn_item (&@) {
 	@args = @{ $args[0]->{args} };
     }
 
-    __PACKAGE__->new( @args, item_callback => $callback, post_item_callback => $post_callback );
+    my $self                    = __PACKAGE__->new( @args );
+    $self->{item_callback}      = $callback;
+    $self->{post_item_callback} = $post_callback;
+
+    $self;
 }
 
 sub txn_post_item (&@) {
@@ -44,22 +51,23 @@ sub txn_post_item (&@) {
 sub add {
     my ( $self, $data ) = @_;
 
+    $self->{repeated_deadlocks} = 0;
     try {
 	push @{ $self->{pool} }, $data;
 
-	if ( ! $self->{in_txn} ) {
-	    $self->{dbh}->begin_work;
-	    $self->{in_txn} = 1;
-	}
+	$self->start_txn;
 
 	local $_ = $data;
 	$self->{item_callback}->( $data );
     }
     catch {
-	$self->{dbh}->rollback;
-	$self->{in_txn} = undef;
+	$self->rollback_txn;
 
-	/deadlock/io ? $self->repeat_again : die( __PACKAGE__ . ": error in item callback ($_)" );
+	/deadlock/io
+        ?
+            ( $self->{amount_deadlocks}++, $self->repeat_again )
+        :
+            die( __PACKAGE__ . ": error in item callback ($_)" );
     };
 
     $self->finish
@@ -69,7 +77,8 @@ sub add {
 sub repeat_again {
     my $self = shift;
 
-    $self->{dbh}->begin_work;
+    $self->start_txn;
+    select( undef, undef, undef, 0.1 * ++$self->{repeated_deadlocks} );
 
     try {
 	foreach my $data ( @{ $self->{pool} } ) {
@@ -78,11 +87,17 @@ sub repeat_again {
 	}
     }
     catch {
-	$self->{dbh}->rollback;
+	$self->rollback_txn;
 
 	/deadlock/io
 	?
-	    ( ++$self->{repeated} >= $self->{max_repeat} ? die( __PACKAGE__ . ": limit of deadlock resolvings" ) : $self->repeat_again )
+	    (
+                $self->{amount_deadlocks}++, $self->{repeated_deadlocks} >= $self->{max_repeated_deadlocks}
+                ?
+                    die( __PACKAGE__ . ": limit of deadlock resolvings" )
+                :
+                    $self->repeat_again
+            )
 	:
 	    die( __PACKAGE__ . ": error in item callback ($_)" );
     };
@@ -91,10 +106,8 @@ sub repeat_again {
 sub finish {
     my $self = shift;
 
-    if ( $self->{in_txn} ) {
-	$self->{dbh}->commit;
-	$self->{in_txn} = undef;
-    }
+    $self->{repeated_deadlocks} = 0;
+    $self->commit_txn;
 
     if ( $self->{post_item_callback} ) {
 	foreach my $data ( @{ $self->{pool} } ) {
@@ -106,6 +119,35 @@ sub finish {
     $self->{pool} = [];
 }
 
+sub start_txn {
+    my $self = shift;
+
+    if ( ! $self->{in_txn} ) {
+	$self->{dbh}->begin_work or die $self->{dbh}->errstr;
+	$self->{in_txn} = 1;
+    }
+}
+
+sub rollback_txn {
+    my $self = shift;
+
+    if ( $self->{in_txn} ) {
+	$self->{dbh}->rollback or die $self->{dbh}->errstr;
+	$self->{in_txn} = undef;
+    }
+}
+
+sub commit_txn {
+    my $self = shift;
+
+    if ( $self->{in_txn} ) {
+	$self->{dbh}->commit or die $self->{dbh}->errstr;
+	$self->{in_txn} = undef;
+    }
+}
+
+sub amount_deadlocks { $_[0]->{amount_deadlocks} }
+
 1;
 
 __END__
@@ -114,7 +156,8 @@ __END__
 
 =head1 NAME
 
-DBIx::TxnPool - The easy pool for making SQL insert/delete/updates statements more quickly by transaction method
+DBIx::TxnPool - The easy pool for making SQL insert/delete/updates statements
+more quickly by transaction method
 
 =head1 SYNOPSIS
 
@@ -178,29 +221,40 @@ Or other way:
 	# this code may be recalled if deadlocks will occur
     } dbh => $dbh, size => 100;
 
-There are all parameters.
+=head2 Shortcuts:
 
-=over parameters
+=over
 
-=item B<Required>: txn_item
+=item txn_item B<(Required)>
 
 The transaction's item callback. Here should be SQL statements and code should
 be safe for repeating (when a deadlock occurs). The C<$_> consists a current item.
 You can modify it if one is hashref for example.
 
-=item B<Optional>: txn_post_item
+=item txn_post_item B<(Optional)>
 
 The post transaction item callback. This code will be executed once for each
 item (defined in C<$_>). It is located outside of the transaction. And it will
 be called if whole transaction was succaessful.
 
-=item B<Required>: dbh
+=back
+
+=head2 Parameters:
+
+=over
+
+=item dbh B<(Required)>
 
 The dbh to be needed for begin_work & commit method (wrap in a transaction).
 
-=item B<Optional>: size
+=item size B<(Optional)>
 
 The size of pool when a commit method will be called when feeding reaches the same size.
+
+=item max_repeated_deadlocks B<(Optional)>
+
+The limit of consecutive deadlocks. The default is 5. After limit to be reached
+the L<add> throws exception.
 
 =back
 
@@ -234,9 +288,11 @@ itself.
 
 =over
 
-=item To add doc for max_repeat
+=item To add doc for max_repeated_deadlocks
 
 =item A supporting DBIx::Connector object instead DBI
+
+=item To make a DESTROY method - the alias for C<finish> method.
 
 =back
 

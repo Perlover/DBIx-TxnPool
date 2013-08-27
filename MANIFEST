@@ -11,11 +11,14 @@ inc/Module/Install/Win32.pm
 inc/Module/Install/WriteAll.pm
 lib/DBIx/TxnPool.pm
 MANIFEST			This list of files
+MANIFEST.bak
 MANIFEST.SKIP
 META.yml
 MYMETA.json
 MYMETA.yml
+README
 t/00_use.t
 xt/00_mysql_connect.t
 xt/01_deadlock_demonstration.t
+xt/02_deadlock_solution.t
 xt/connect.pm
