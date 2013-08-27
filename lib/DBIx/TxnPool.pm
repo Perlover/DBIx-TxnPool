@@ -13,9 +13,9 @@ sub new {
     my ( $class, %args ) = @_;
 
     my $self = bless {
-	size			=> $args{size} || 100,
-	dbh			=> $args{dbh} || die( __PACKAGE__ . ": the dbh should be defined" ),
-	max_repeated_deadlocks	=> $args{max_repeated_deadlocks} || 5,
+        size                    => $args{size} || 100,
+        dbh                     => $args{dbh} || die( __PACKAGE__ . ": the dbh should be defined" ),
+        max_repeated_deadlocks  => $args{max_repeated_deadlocks} || 5,
     }, ref $class || $class;
 
     $self->{pool} = [];
@@ -30,9 +30,9 @@ sub txn_item (&@) {
     my ( $post_callback );
 
     if ( ref $args[0] eq 'HASH' ) {
-	# If there is txn_post_item after txn_item
-	$post_callback = $args[0]->{post_callback};
-	@args = @{ $args[0]->{args} };
+        # If there is txn_post_item after txn_item
+        $post_callback = $args[0]->{post_callback};
+        @args = @{ $args[0]->{args} };
     }
 
     my $self                    = __PACKAGE__->new( @args );
@@ -53,17 +53,17 @@ sub add {
 
     $self->{repeated_deadlocks} = 0;
     try {
-	push @{ $self->{pool} }, $data;
+        push @{ $self->{pool} }, $data;
 
-	$self->start_txn;
+        $self->start_txn;
 
-	local $_ = $data;
-	$self->{item_callback}->( $data );
+        local $_ = $data;
+        $self->{item_callback}->( $data );
     }
     catch {
-	$self->rollback_txn;
+        $self->rollback_txn;
 
-	/deadlock/io
+        /deadlock/io
         ?
             ( $self->{amount_deadlocks}++, $self->repeat_again )
         :
@@ -81,25 +81,25 @@ sub repeat_again {
     select( undef, undef, undef, 0.1 * ++$self->{repeated_deadlocks} );
 
     try {
-	foreach my $data ( @{ $self->{pool} } ) {
-	    local $_ = $data;
-	    $self->{item_callback}->( $data );
-	}
+        foreach my $data ( @{ $self->{pool} } ) {
+            local $_ = $data;
+            $self->{item_callback}->( $data );
+        }
     }
     catch {
-	$self->rollback_txn;
+        $self->rollback_txn;
 
-	/deadlock/io
-	?
-	    (
+        /deadlock/io
+        ?
+            (
                 $self->{amount_deadlocks}++, $self->{repeated_deadlocks} >= $self->{max_repeated_deadlocks}
                 ?
                     die( __PACKAGE__ . ": limit of deadlock resolvings" )
                 :
                     $self->repeat_again
             )
-	:
-	    die( __PACKAGE__ . ": error in item callback ($_)" );
+        :
+            die( __PACKAGE__ . ": error in item callback ($_)" );
     };
 }
 
@@ -110,10 +110,10 @@ sub finish {
     $self->commit_txn;
 
     if ( $self->{post_item_callback} ) {
-	foreach my $data ( @{ $self->{pool} } ) {
-	    local $_ = $data;
-	    $self->{post_item_callback}->( $data );
-	}
+        foreach my $data ( @{ $self->{pool} } ) {
+            local $_ = $data;
+            $self->{post_item_callback}->( $data );
+        }
     }
 
     $self->{pool} = [];
@@ -123,8 +123,8 @@ sub start_txn {
     my $self = shift;
 
     if ( ! $self->{in_txn} ) {
-	$self->{dbh}->begin_work or die $self->{dbh}->errstr;
-	$self->{in_txn} = 1;
+        $self->{dbh}->begin_work or die $self->{dbh}->errstr;
+        $self->{in_txn} = 1;
     }
 }
 
@@ -132,8 +132,8 @@ sub rollback_txn {
     my $self = shift;
 
     if ( $self->{in_txn} ) {
-	$self->{dbh}->rollback or die $self->{dbh}->errstr;
-	$self->{in_txn} = undef;
+        $self->{dbh}->rollback or die $self->{dbh}->errstr;
+        $self->{in_txn} = undef;
     }
 }
 
@@ -141,8 +141,8 @@ sub commit_txn {
     my $self = shift;
 
     if ( $self->{in_txn} ) {
-	$self->{dbh}->commit or die $self->{dbh}->errstr;
-	$self->{in_txn} = undef;
+        $self->{dbh}->commit or die $self->{dbh}->errstr;
+        $self->{in_txn} = undef;
     }
 }
 
@@ -164,18 +164,18 @@ more quickly by transaction method
     use DBIx::TxnPool;
 
     my $pool = txn_item {
-	# $_ consists the one item
-	# code has dbh & sth handle statements
-	# It's executed for every item inside one transaction maximum of size 'size'
-	# this code may be recalled if deadlocks will occur
+        # $_ consists the one item
+        # code has dbh & sth handle statements
+        # It's executed for every item inside one transaction maximum of size 'size'
+        # this code may be recalled if deadlocks will occur
     }
     txn_post_item {
-	# $_ consists the one item
-	# code executed for every item after sucessfully commited transaction
+        # $_ consists the one item
+        # code executed for every item after sucessfully commited transaction
     } dbh => $dbh, size => 100;
 
     foreach my $i ( 0 .. 1000 ) {
-	$pool->add( { i => $i, value => 'test' . $i } );
+        $pool->add( { i => $i, value => 'test' . $i } );
     }
 
     $pool->finish;
@@ -202,23 +202,23 @@ deleting files, cleanups and etc.
 The object DBIx::TxnPool created by txn_item subroutines:
 
     my $pool = txn_item {
-	# $_ consists the one item
-	# code has dbh & sth handle statements
-	# It's executed for every item inside one transaction maximum of size 'size'
-	# this code may be recalled if deadlocks will occur
+        # $_ consists the one item
+        # code has dbh & sth handle statements
+        # It's executed for every item inside one transaction maximum of size 'size'
+        # this code may be recalled if deadlocks will occur
     }
     txn_post_item {
-	# $_ consists the one item
-	# code executed for every item after sucessfully commited transaction
+        # $_ consists the one item
+        # code executed for every item after sucessfully commited transaction
     } dbh => $dbh, size => 100;
 
 Or other way:
 
     my $pool = txn_item {
-	# $_ consists the one item
-	# code has dbh & sth handle statements
-	# It's executed for every item inside one transaction maximum of size 'size'
-	# this code may be recalled if deadlocks will occur
+        # $_ consists the one item
+        # code has dbh & sth handle statements
+        # It's executed for every item inside one transaction maximum of size 'size'
+        # this code may be recalled if deadlocks will occur
     } dbh => $dbh, size => 100;
 
 =head2 Shortcuts:

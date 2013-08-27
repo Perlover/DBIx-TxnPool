@@ -3,7 +3,5 @@
 /Makefile.old
 *.tar.gz
 /DBIx-TxnPool-*/
-/MYMETA.*
-/META.yml
 /blib/
 pm_to_blib

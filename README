@@ -63,9 +63,7 @@ CONSTRUCTOR
             # this code may be recalled if deadlocks will occur
         } dbh => $dbh, size => 100;
 
-    There are all parameters.
-
-  Parameters:
+  Shortcuts:
     txn_item (Required)
         The transaction's item callback. Here should be SQL statements and
         code should be safe for repeating (when a deadlock occurs). The $_
@@ -78,6 +76,7 @@ CONSTRUCTOR
         transaction. And it will be called if whole transaction was
         succaessful.
 
+  Parameters:
     dbh (Required)
         The dbh to be needed for begin_work & commit method (wrap in a
         transaction).
@@ -85,6 +84,10 @@ CONSTRUCTOR
     size (Optional)
         The size of pool when a commit method will be called when feeding
         reaches the same size.
+
+    max_repeated_deadlocks (Optional)
+        The limit of consecutive deadlocks. The default is 5. After limit to
+        be reached the add throws exception.
 
 METHODS
     add You can add item of data to the pool. This method makes a wrap to

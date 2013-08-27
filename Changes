@@ -1,5 +1,2 @@
-0.01 - This is only draft module - it cannot work while but has a some database tests
-    +) Added the xt/01_deadlock_demonstration.t - demonstration of deadlocks
-       This test can be performed only as from author (xt/ directory)
-       But you can see a code for example about deadlock
-    *) I begun to make a module
+0.01 -
+    Final release for CPAN
