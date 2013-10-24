@@ -1,5 +1,8 @@
 Revision history for perl module DBIx::TxnPool
 
+0.05 2013-10-24
+    - Removed MYMETA.* files from MANIFEST and added to exclude lists (.gitignore & MANIFEST.SKIP)
+
 0.04 2013-08-31
     - Added 'txn_commit' shortcut as 'commit' callback
     - Some code improvements

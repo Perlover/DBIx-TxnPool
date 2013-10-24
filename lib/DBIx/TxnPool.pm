@@ -6,7 +6,7 @@ use Exporter 5.57 qw( import );
 
 use Try::Tiny;
 
-our $VERSION = 0.04;
+our $VERSION = 0.05;
 our @EXPORT = qw( txn_item txn_post_item txn_commit );
 
 sub new {
