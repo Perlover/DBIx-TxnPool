@@ -5,10 +5,14 @@ use warnings;
 use Exporter 5.57 qw( import );
 
 use Try::Tiny;
-use Carp;
+use Carp qw( confess croak );
 
 our $VERSION = 0.07;
 our @EXPORT = qw( txn_item txn_post_item txn_commit );
+
+# It's better to look for the "try restarting transaction" string
+# because sometime may be happens other error: Lock wait timeout exceeded
+use constant DEADLOCK_REGEXP    => qr/try restarting transaction/o;
 
 sub new {
     my ( $class, %args ) = @_;
@@ -40,6 +44,11 @@ sub txn_commit (&@) {
     __make_chain( 'commit_callback', @_ );
 }
 
+sub txn_sort (&@) {
+    $_[0]->{sort_callback_package} = caller;
+    __make_chain( 'sort_callback', @_ );
+}
+
 sub __make_chain {
     my $cb_name = shift;
     my $cb_func = shift;
@@ -58,28 +67,40 @@ sub add {
     try {
         push @{ $self->{pool} }, $data;
 
-        $self->start_txn;
+        if ( ! $self->{sort_callback} ) {
+            $self->start_txn;
 
-        local $_ = $data;
-        $self->{item_callback}->( $self, $data );
+            local $_ = $data;
+            $self->{item_callback}->( $self, $data );
+        }
     }
-    catch {
-        $self->rollback_txn;
-
-        # It's better to look for the "try restarting transaction" string
-        # because sometime may be happens other error: Lock wait timeout exceeded
-        /try restarting transaction/o
-        ?
-            ( $self->{amount_deadlocks}++, $self->repeat_again )
-        :
-            croak( __PACKAGE__ . ": error in item callback ($_)" );
-    };
+    catch $self->_catch_callback( $self );
 
     $self->finish
       if ( @{ $self->{pool} } >= $self->{size} );
 }
 
-sub repeat_again {
+sub _catch_callback {
+    my $self = shift;
+
+    sub {
+        $self->rollback_txn;
+
+        $_ =~ DEADLOCK_REGEXP
+        ?
+            (
+                $self->{amount_deadlocks}++, $self->{repeated_deadlocks} >= $self->{max_repeated_deadlocks}
+                ?
+                    confess( "limit ($self->{repeated_deadlocks}) of deadlock resolvings" )
+                :
+                    $self->play_pool
+            )
+        :
+            confess( "error in item callback ($_)" );
+    };
+}
+
+sub play_pool {
     my $self = shift;
 
     $self->start_txn;
@@ -91,30 +112,27 @@ sub repeat_again {
             $self->{item_callback}->( $self, $data );
         }
     }
-    catch {
-        $self->rollback_txn;
-
-        # It's better to look for the "try restarting transaction" string
-        # because sometime may be happens other error: Lock wait timeout exceeded
-        /try restarting transaction/o
-        ?
-            (
-                $self->{amount_deadlocks}++, $self->{repeated_deadlocks} >= $self->{max_repeated_deadlocks}
-                ?
-                    croak( __PACKAGE__ . ": limit of deadlock resolvings" )
-                :
-                    $self->repeat_again
-            )
-        :
-            croak( __PACKAGE__ . ": error in item callback ($_)" );
-    };
+    catch $self->_catch_callback( $self );
 }
 
 sub finish {
     my $self = shift;
 
-    $self->{repeated_deadlocks} = 0;
-    $self->commit_txn;
+    if ( $self->{sort_callback} && @{ $self->{pool} } ) {
+        no strict 'refs';
+        local *a = eval { "*$self->{sort_callback_package}::a" };
+        local *b = eval { "*$self->{sort_callback_package}::b" };
+
+        $self->{pool} = [ sort $self->{sort_callback}, @{ $self->{pool} } ];
+
+        $self->play_pool;
+    }
+
+    try {
+        $self->{repeated_deadlocks} = 0;
+        $self->commit_txn;
+    }
+    catch $self->_catch_callback( $self );
 
     if ( exists $self->{post_item_callback} ) {
         foreach my $data ( @{ $self->{pool} } ) {
