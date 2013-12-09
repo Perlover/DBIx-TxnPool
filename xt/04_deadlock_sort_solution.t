@@ -4,12 +4,12 @@ use warnings;
 
 use lib 'xt';
 
-BEGIN { $Test::MultiFork::inactivity = 10 }
+BEGIN { $Test::MultiFork::inactivity = 120 }
 
 use Test::MultiFork;
-use Test::More tests => 3;
+use Test::More;
 
-use constant    AMOUNT_TESTS => 300;
+use constant    AMOUNT_TESTS => 100;
 
 use connect;
 use DBIx::TxnPool;
@@ -47,7 +47,12 @@ ab:
         # sorting by updated key prevent deadlocks of transactions do same SQL statements
         $sorted_calls++;
         # to check if sort works fine - $a & $b should be normal aliased
-        ok ref $a eq 'HASH' && ref $b eq 'HASH' && exists $a->{a} && exists $b->{a} && $a->{a} > 0 && $a->{b} > 0;
+        ok ref $a eq 'HASH'
+          && ref $b eq 'HASH'
+          && exists $a->{a}
+          && exists $b->{a}
+          && $a->{a} > 0
+          && $b->{a} > 0;
         $a->{a} <=> $b->{a};
     }
     txn_commit {
@@ -69,7 +74,6 @@ ab:
     }
 
 ab:
-    diag "The amount deadlocks is " . $pool->amount_deadlocks;
     ok $pool->amount_deadlocks == 0;
     ok $sorted_calls > 0;
     ok( $commit_callbacks == AMOUNT_TESTS );
