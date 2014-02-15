@@ -21,7 +21,10 @@ sub new {
       unless $args{dbh};
 
     $args{size}                   ||= 100;
+    $args{block_signals}          ||= [ qw( TERM INT ) ];
     $args{max_repeated_deadlocks} ||= 5;
+    $args{_amnt_nested_signals}   = 0;
+    $args{_saved_signal_masks}    = {};
     $args{pool}                   = [];
     $args{amount_deadlocks}       = 0;
 
@@ -65,14 +68,17 @@ sub add {
     my ( $self, $data ) = @_;
 
     $self->{repeated_deadlocks} = 0;
+
     try {
         push @{ $self->{pool} }, $data;
 
         if ( ! $self->{sort_callback} ) {
-            $self->start_txn;
+            $self->_safe_signals( sub {
+                $self->start_txn;
 
-            local $_ = $data;
-            $self->{item_callback}->( $self, $data );
+                local $_ = $data;
+                $self->{item_callback}->( $self, $data );
+            } );
         }
     }
     catch {
@@ -153,8 +159,10 @@ sub start_txn {
     my $self = shift;
 
     if ( ! $self->{in_txn} ) {
-        $self->{dbh}->begin_work or die $self->{dbh}->errstr;
-        $self->{in_txn} = 1;
+        $self->_safe_signals( sub {
+            $self->{dbh}->begin_work or die $self->{dbh}->errstr;
+            $self->{in_txn} = 1;
+        } );
     }
 }
 
@@ -162,8 +170,10 @@ sub rollback_txn {
     my $self = shift;
 
     if ( $self->{in_txn} ) {
-        $self->{dbh}->rollback or die $self->{dbh}->errstr;
-        $self->{in_txn} = undef;
+        $self->_safe_signals( sub {
+            $self->{dbh}->rollback or die $self->{dbh}->errstr;
+            $self->{in_txn} = undef;
+        } );
     }
 }
 
@@ -179,6 +189,30 @@ sub commit_txn {
 }
 
 sub amount_deadlocks { $_[0]->{amount_deadlocks} }
+
+sub _safe_signals {
+    my ( $self, $code ) = @_;
+
+    if ( ! $self->{_amnt_nested_signals}++ ) {
+        for ( @{ $self->{block_signals} } ) {
+            $self->{_saved_signal_masks}{ $_ } = $Signal::Mask{ $_ };
+            $Signal::Mask{ $_ } = 1;
+        }
+    }
+    try {
+        $code->();
+    }
+    catch {
+        die $_;
+    }
+    finally {
+        if ( ! --$self->{_amnt_nested_signals} ) {
+            for ( @{ $self->{block_signals} } ) {
+                $Signal::Mask{ $_ } = delete $self->{_saved_signal_masks}{ $_ };
+            }
+        }
+    };
+}
 
 1;
 
