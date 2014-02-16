@@ -112,7 +112,10 @@ sub play_pool {
     my $self = shift;
 
     $self->start_txn;
-    select( undef, undef, undef, 0.5 * ++$self->{repeated_deadlocks} );
+
+    $self->_safe_signals( sub {
+        select( undef, undef, undef, 0.5 * ++$self->{repeated_deadlocks} );
+    } );
 
     try {
         foreach my $data ( @{ $self->{pool} } ) {
