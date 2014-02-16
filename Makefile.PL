@@ -13,6 +13,7 @@ version_from 'lib/DBIx/TxnPool.pm';
 requires 'Try::Tiny';
 requires 'Signal::Mask';
 requires 'Carp';
+requires 'Exporter'      => 5.57;
 
 auto_set_repository;
 author_tests('xt');

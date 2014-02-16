@@ -406,14 +406,14 @@ The amount of deadlocks (repeated transactions)
 
 =head1 SIGNAL HANDLING
 
-In DBD::mysql and may be in other DB drivers there is a some bad behavior - the
-bug i think. If a some signal will arrive (TERM, INT and other) in your program
-during a some SQL socket work this driver throws an exception like "MySQL lost
-connection". It happens because the C<recv> or C<read> system calls into MySQL
-driver return with error code C<EINTR> if signal arrives inside this system
-call. A right written software should recall system call again because C<EINTR>
-is not fatal error. But i think MySQL driver decides this error as I<lost
-connection error>. I<"Deferred Signals"> (or L<Safe
+In DBD::mysql and may be in other DB drivers there is a some bad behavior the
+bug as i think. If a some signal will arrive (TERM, INT and other) in your
+program during a some SQL socket work this driver throws an exception like
+"MySQL lost connection". It happens because the C<recv> or C<read> system calls
+into MySQL driver return with error code C<EINTR> if signal arrives inside this
+system call. A right written software should recall a system call again because
+the C<EINTR> is not fatal error. But i think MySQL driver decides this error as
+I<lost connection error>. I<"Deferred Signals"> (or L<Safe
 Signals|perlipc/"Deferred Signals (Safe Signals)">) of perl don't help because
 the MySQL driver uses direct system calls.
 
