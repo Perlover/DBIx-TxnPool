@@ -1,5 +1,8 @@
 Revision history for perl module DBIx::TxnPool
 
+0.10 NEXT_RELEASE
+    - Improved docs.
+
 0.09 2014-02-16
     - Added the signal blocking for minimizing "MySQL lost connection" errors.
     - Added test for the signal blocking

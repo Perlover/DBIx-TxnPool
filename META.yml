@@ -1,5 +1,5 @@
 ---
-abstract: 'The helper for making SQL insert/delete/update statements through a transaction method with a deadlock solution'
+abstract: 'Massive SQL updates by means of transactions with the deadlock & signal solution'
 author:
   - 'Perlover <perlover@perlover.com>'
 build_requires:
@@ -26,4 +26,4 @@ requires:
 resources:
   license: http://dev.perl.org/licenses/
   repository: git://github.com/Perlover/DBIx-TxnPool.git
-version: 0.09
+version: 0.1
