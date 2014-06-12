@@ -101,17 +101,19 @@ sub _check_deadlock {
 
     $self->rollback_txn;
 
-    $error =~ DEADLOCK_REGEXP
-    ?
-        (
-            $self->{amount_deadlocks}++, $self->{repeated_deadlocks} >= $self->{max_repeated_deadlocks}
-            ?
-                confess( "limit ($self->{repeated_deadlocks}) of deadlock resolvings" )
-            :
-                $self->play_pool
-        )
-    :
+    if ( $error =~ DEADLOCK_REGEXP ) {
+        $self->{amount_deadlocks}++;
+        if ( $self->{repeated_deadlocks} >= $self->{max_repeated_deadlocks} ) {
+            confess( "limit ($self->{repeated_deadlocks}) of deadlock resolvings" )
+        }
+        else {
+            $self->play_pool
+        }
+    } else {
+        # Fatal error - may be bad SQL statement - finish
+        $self->{pool} = []; # If DESTROY calls finish() there will not problems
         confess( "error in item callback ($error)" );
+    }
 }
 
 sub play_pool {
@@ -138,7 +140,7 @@ sub play_pool {
 
 sub finish {
     my $self = shift;
-    
+
     die "assert: _amnt_nested_signals is not zero!"
       if $self->{_amnt_nested_signals};
 
