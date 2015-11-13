@@ -81,7 +81,9 @@ CONSTRUCTOR
         code should be safe for repeating (when a deadlock occurs). The $_
         consists a current item. You can modify it if one is hashref for
         example. Passing arguments will be *DBIx::TxnPool* object and
-        *current item* respectively.
+        *current item* respectively. Please don't catch exceptions here (by
+        try{} or eval{} for example) - by this way deadlocks are defined
+        outside under the hood!
 
     txn_sort (Optional)
         Here you can define sort function for your data before a transaction
@@ -96,7 +98,9 @@ CONSTRUCTOR
         for each item (defined in $_). It is located outside of the
         transaction. And it will be called if whole transaction was
         successful. Passing arguments are *DBIx::TxnPool* object and
-        *current item* respectively.
+        *current item* respectively. You can do here your own error handling
+        in callback. If your code here will throw an excetption it will be
+        propagated above.
 
     txn_commit (Optional)
         This callback will be called after each SQL commit statement. Here

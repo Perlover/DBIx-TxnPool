@@ -6,9 +6,9 @@ use Exporter 5.57 qw( import );
 
 use Try::Tiny;
 use Signal::Mask;
-use Carp qw( confess croak );
+use Carp qw( confess );
 
-our $VERSION = 0.10;
+our $VERSION = 0.11;
 our $BlockSignals = [ qw( TERM INT ) ];
 our @EXPORT = qw( txn_item txn_post_item txn_commit txn_sort );
 
@@ -19,7 +19,7 @@ use constant DEADLOCK_REGEXP    => qr/try restarting transaction/o;
 sub new {
     my ( $class, %args ) = @_;
 
-    croak( __PACKAGE__ . ": the dbh should be defined" )
+    confess( "The dbh should be defined" )
       unless $args{dbh};
 
     $args{size}                   ||= 100;
@@ -34,7 +34,10 @@ sub new {
 }
 
 sub DESTROY {
-    $_[0]->finish;
+    local $@;
+
+    $_[0]->finish
+      unless ( $_[0]->{repeated_deadlocks} >= $_[0]->{max_repeated_deadlocks} );
 }
 
 sub txn_item (&@) {
@@ -71,7 +74,7 @@ sub add {
 
     $self->{repeated_deadlocks} = 0;
 
-    die "assert: _amnt_nested_signals is not zero!"
+    confess "assert: _amnt_nested_signals is not zero!"
       if $self->{_amnt_nested_signals};
 
     try {
@@ -92,22 +95,28 @@ sub add {
     $self->finish
       if ( @{ $self->{pool} } >= $self->{size} );
 
-    die "assert: _amnt_nested_signals is not zero!"
+    confess "assert: _amnt_nested_signals is not zero!"
       if $self->{_amnt_nested_signals};
 }
 
 sub _check_deadlock {
     my ( $self, $error ) = @_;
 
+    my $dbi_error = $DBI::err;
+
     $self->rollback_txn;
 
-    if ( $error =~ DEADLOCK_REGEXP ) {
+    # For example codes: https://dev.mysql.com/doc/refman/5.5/en/error-messages-server.html
+    # MySQL codes 1213 & 1205 are reasons to redo transaction again
+    # For other SQL engines i don't know codes - patches are walcome! ;-) [https://github.com/Perlover/DBIx-TxnPool]
+    if ( defined $dbi_error && ( $dbi_error == 1213 || $dbi_error == 1205 ) ) {
         $self->{amount_deadlocks}++;
         if ( $self->{repeated_deadlocks} >= $self->{max_repeated_deadlocks} ) {
+            $self->{pool} = []; # If DESTROY calls finish() there will not problems
             confess( "limit ($self->{repeated_deadlocks}) of deadlock resolvings" )
         }
         else {
-            $self->play_pool
+            $self->play_pool;
         }
     } else {
         # Fatal error - may be bad SQL statement - finish
@@ -141,7 +150,7 @@ sub play_pool {
 sub finish {
     my $self = shift;
 
-    die "assert: _amnt_nested_signals is not zero!"
+    confess "assert: _amnt_nested_signals is not zero!"
       if $self->{_amnt_nested_signals};
 
     if ( $self->{sort_callback} && @{ $self->{pool} } ) {
@@ -171,7 +180,7 @@ sub finish {
 
     $self->{pool} = [];
 
-    die "assert: _amnt_nested_signals is not zero!"
+    confess "assert: _amnt_nested_signals is not zero!"
       if $self->{_amnt_nested_signals};
 }
 
@@ -180,7 +189,7 @@ sub start_txn {
 
     if ( ! $self->{in_txn} ) {
         $self->_safe_signals( sub {
-            $self->{dbh}->begin_work or die $self->{dbh}->errstr;
+            $self->{dbh}->begin_work or confess 'DBI error: ' . $self->{dbh}->errstr;
             $self->{in_txn} = 1;
         } );
     }
@@ -191,7 +200,7 @@ sub rollback_txn {
 
     if ( $self->{in_txn} ) {
         $self->_safe_signals( sub {
-            $self->{dbh}->rollback or die $self->{dbh}->errstr;
+            $self->{dbh}->rollback or confess 'DBI error: ' .  $self->{dbh}->errstr;
             $self->{in_txn} = undef;
         } );
     }
@@ -202,7 +211,7 @@ sub commit_txn {
 
     if ( $self->{in_txn} ) {
         $self->_safe_signals( sub {
-            $self->{dbh}->commit or die $self->{dbh}->errstr;
+            $self->{dbh}->commit or confess 'DBI error: ' .  $self->{dbh}->errstr;
             $self->{in_txn} = undef;
         } );
         $self->{commit_callback}->( $self )
@@ -327,10 +336,10 @@ Parameters should be the last.
 
 =item txn_item B<(Required)>
 
-The transaction item callback. There should be SQL statements and code should be
-safe for repeating (when a deadlock occurs). The C<$_> consists a current item.
-You can modify it if one is hashref for example. Passing arguments will be
-I<DBIx::TxnPool> object and I<current item> respectively.
+The transaction item callback. There should be SQL statements and code should be safe for repeating (when a deadlock
+occurs). The C<$_> consists a current item. You can modify it if one is hashref for example. Passing arguments will be
+I<DBIx::TxnPool> object and I<current item> respectively. B<Please don't catch exceptions here (by try{} or eval{} for
+example)> - by this way deadlocks are defined outside under the hood!
 
 =item txn_sort B<(Optional)>
 
@@ -343,10 +352,10 @@ events!
 
 =item txn_post_item B<(Optional)>
 
-The post transaction item callback. This code will be executed once for each
-item (defined in C<$_>). It is located outside of the transaction. And it will
-be called if whole transaction was successful. Passing arguments are
-I<DBIx::TxnPool> object and I<current item> respectively.
+The post transaction item callback. This code will be executed once for each item (defined in C<$_>). It is located
+outside of the transaction. And it will be called if whole transaction was successful. Passing arguments are
+I<DBIx::TxnPool> object and I<current item> respectively. You can do here your own error handling in callback. If your
+code here will throw an excetption it will be propagated above.
 
 =item txn_commit B<(Optional)>
 

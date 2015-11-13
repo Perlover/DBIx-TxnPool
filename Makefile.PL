@@ -14,9 +14,15 @@ requires 'Try::Tiny';
 requires 'Signal::Mask';
 requires 'Carp';
 requires 'Exporter'      => 5.57;
+requires 'DBI';
+requires 'DBD::mysql';
 
 auto_set_repository;
 author_tests('xt');
+
+# makemaker_args(
+#     PREREQ_FATAL => 1
+# );
 
 WriteAll();
 

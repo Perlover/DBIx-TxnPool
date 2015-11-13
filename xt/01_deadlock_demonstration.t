@@ -44,10 +44,11 @@ ab:
     else {
         # Small transactions are preferable for breaking by MySQL: http://dev.mysql.com/doc/refman/5.5/en/innodb-deadlock-detection.html
         # This transaction is small here because the transaction from 'a' already locked 2 rows but this only one row
-        throws_ok {
+        dies_ok {
             select( undef, undef, undef, 0.5 );
             $dbh->do( "UPDATE $table SET b=2 WHERE a=1" );
-        } qr/Deadlock found when/;
+        };
+        ok( $DBI::err == 1213 );
     }
 a:
     $dbh->commit or die $dbh->errstr;
