@@ -88,14 +88,14 @@ ab:
 
 ab:
     ok( $commit_callbacks == AMOUNT_TESTS );
-    # diag "pid $$, caught number TERM signals: $amount_TERM_signals";
+    #diag "pid $$, caught number TERM signals: $amount_TERM_signals";
     ok $amount_TERM_signals > 0;
-    
-    $amount_TERM_signals = 0;
-    
+
 ab:
     {
         local $Signal::Mask{TERM} = 1;
+
+        $amount_TERM_signals = 0;
 
         ok $Signal::Mask{TERM};
         lives_ok {
@@ -110,7 +110,9 @@ ab:
         ok $Signal::Mask{TERM};
         ok $amount_TERM_signals == 0;
     }
-    
-    ok $amount_TERM_signals == 1;
+
+ab:
+    #diag "pid $$, caught number TERM signals: $amount_TERM_signals";
+    ok $amount_TERM_signals > 0;
 
     done_testing;
