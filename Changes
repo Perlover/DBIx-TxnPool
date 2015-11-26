@@ -1,5 +1,9 @@
 Revision history for perl module DBIx::TxnPool
 
+0.12 2015-11-26
+    - fix bug - sometimes callback the txn_commit was not called
+    - commit improvements
+
 0.11 2015-11-13
     - (improvement) The deadlock definition was changed - now by err codes not by regexp of errstr
     - (fix) DESTROY method now localises $@ and doesn't do finish method if a deadlock limit was reached

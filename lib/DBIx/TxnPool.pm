@@ -8,7 +8,7 @@ use Try::Tiny;
 use Signal::Mask;
 use Carp qw( confess );
 
-our $VERSION = 0.11;
+our $VERSION = 0.12;
 our $BlockSignals = [ qw( TERM INT ) ];
 our @EXPORT = qw( txn_item txn_post_item txn_commit txn_sort );
 
@@ -29,6 +29,8 @@ sub new {
     $args{_saved_signal_masks}    = {};
     $args{pool}                   = [];
     $args{amount_deadlocks}       = 0;
+
+    $args{repeated_deadlocks}     = 0;
 
     bless \%args, ref $class || $class;
 }
@@ -71,8 +73,6 @@ sub dbh { $_[0]->{dbh} }
 
 sub add {
     my ( $self, $data ) = @_;
-
-    $self->{repeated_deadlocks} = 0;
 
     confess "assert: _amnt_nested_signals is not zero!"
       if $self->{_amnt_nested_signals};
@@ -163,13 +163,7 @@ sub finish {
         $self->play_pool;
     }
 
-    try {
-        $self->{repeated_deadlocks} = 0;
-        $self->commit_txn;
-    }
-    catch {
-        $self->_check_deadlock( $_ );
-    };
+    $self->commit_txn;
 
     if ( exists $self->{post_item_callback} ) {
         foreach my $data ( @{ $self->{pool} } ) {
@@ -210,10 +204,20 @@ sub commit_txn {
     my $self = shift;
 
     if ( $self->{in_txn} ) {
-        $self->_safe_signals( sub {
-            $self->{dbh}->commit or confess 'DBI error: ' .  $self->{dbh}->errstr;
-            $self->{in_txn} = undef;
-        } );
+        try {
+            $self->_safe_signals( sub {
+                $self->{dbh}->commit or confess 'DBI error: ' .  $self->{dbh}->errstr;
+                $self->{in_txn} = undef;
+            } );
+            1;
+        }
+        catch {
+            $self->_check_deadlock( $_ );
+            $self->commit_txn;
+            0;
+        } or return;
+
+        $self->{repeated_deadlocks} = 0;
         $self->{commit_callback}->( $self )
           if exists $self->{commit_callback};
     }
