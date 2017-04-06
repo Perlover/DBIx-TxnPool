@@ -83,8 +83,8 @@ sub add {
         if ( ! $self->{sort_callback} ) {
             $self->start_txn;
             $self->_safe_signals( sub {
-                local $_ = $data;
-                $self->{item_callback}->( $self, $data );
+                $self->{item_callback}->( $self, $data )
+                  for ( $data );
             } );
         }
     }
@@ -137,8 +137,8 @@ sub play_pool {
     try {
         foreach my $data ( @{ $self->{pool} } ) {
             $self->_safe_signals( sub {
-                local $_ = $data;
-                $self->{item_callback}->( $self, $data );
+                $self->{item_callback}->( $self, $data )
+                  for ( $data );
             } );
         }
     }
@@ -167,8 +167,8 @@ sub finish {
 
     if ( exists $self->{post_item_callback} ) {
         foreach my $data ( @{ $self->{pool} } ) {
-            local $_ = $data;
-            $self->{post_item_callback}->( $self, $data );
+            $self->{item_callback}->( $self, $data )
+              for ( $data );
         }
     }
 
